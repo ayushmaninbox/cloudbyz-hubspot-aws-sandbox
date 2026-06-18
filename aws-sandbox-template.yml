@@ -220,14 +220,7 @@ Resources:
     Type: 'AWS::ApiGatewayV2::Route'
     Properties:
       ApiId: !Ref HttpApiGateway
-      RouteKey: 'GET /api/blogs'
-      Target: !Sub 'integrations/${ApiIntegration}'
-
-  ApiRouteOptions:
-    Type: 'AWS::ApiGatewayV2::Route'
-    Properties:
-      ApiId: !Ref HttpApiGateway
-      RouteKey: 'OPTIONS /api/blogs'
+      RouteKey: '$default'
       Target: !Sub 'integrations/${ApiIntegration}'
 
   ApiStage:
@@ -248,4 +241,4 @@ Resources:
 Outputs:
   ApiUrl:
     Description: 'AWS Lambda Blog API Endpoint URL'
-    Value: !Sub 'https://${HttpApiGateway}.execute-api.${AWS::Region}.amazonaws.com/api/blogs'
+    Value: !Sub 'https://${HttpApiGateway}.execute-api.${AWS::Region}.amazonaws.com/'
