@@ -1,3 +1,23 @@
+<?php
+$apiUrl = 'http://localhost:3001/api/blogs';
+$envPath = __DIR__ . '/../.env';
+if (file_exists($envPath)) {
+    $envContent = file_get_contents($envPath);
+    $lines = explode("\n", $envContent);
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if (empty($line) || strpos($line, '#') === 0) continue;
+        $parts = explode('=', $line, 2);
+        if (count($parts) >= 2) {
+            $key = trim($parts[0]);
+            $val = trim($parts[1]);
+            if ($key === 'AWS_API_URL') {
+                $apiUrl = $val;
+            }
+        }
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -88,7 +108,7 @@
   <!-- Client-side Fetch Logic -->
   <script>
     $(document).ready(function() {
-      const apiBaseUrl = 'http://localhost:3001/api/blogs';
+      const apiBaseUrl = '<?php echo htmlspecialchars($apiUrl, ENT_QUOTES, 'UTF-8'); ?>';
       let currentIndustry = '';
       let nextAfterCursor = '';
       let currentPageTitle = 'All Resources';
@@ -243,7 +263,7 @@
           error: function(xhr, status, error) {
             $('#loading').hide();
             $('#btn-load-more').prop('disabled', false).find('span').text('Load More');
-            showError('Could not connect to JS API backend server (port 3001). Please ensure aws.js is running.');
+            showError('Could not connect to AWS Lambda API Gateway. Please verify your network and check the API endpoint.');
           }
         });
       }

@@ -1,0 +1,251 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cloudbyz HubSpot blog integration simulation hosted on AWS Lambda + HTTP API Gateway'
+
+Parameters:
+  HubSpotToken:
+    Type: String
+    NoEcho: true
+    Description: 'Your HubSpot CMS Private App Access Token'
+  HubSpotBlogId:
+    Type: String
+    Description: 'Your HubSpot Blog ID / Content Group ID'
+    Default: 'YOUR_BLOG_ID_HERE'
+
+Resources:
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+
+  BlogLambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 30
+      Environment:
+        Variables:
+          HUBSPOT_TOKEN: !Ref HubSpotToken
+          HUBSPOT_BLOG_ID: !Ref HubSpotBlogId
+      Code:
+        ZipFile: |
+          const https = require('https');
+          const TAG_MAP = {
+              'cosmetics': '358386886392',
+              'biotechnology': '358399551183',
+              'animal-health': '358386887359',
+              'animal health': '358386887359'
+          };
+          const REVERSE_TAG_MAP = {
+              '358386886392': 'Cosmetics',
+              '358399551183': 'Biotechnology',
+              '358386887359': 'Animal Health'
+          };
+          function httpsRequest(options) {
+              return new Promise((resolve, reject) => {
+                  const req = https.request(options, (res) => {
+                      let body = '';
+                      res.on('data', chunk => body += chunk);
+                      res.on('end', () => {
+                          let decoded = body;
+                          try { decoded = JSON.parse(body); } catch (e) {}
+                          if (res.statusCode >= 400) {
+                              reject(new Error(decoded.message || body));
+                          } else {
+                              resolve(decoded);
+                          }
+                      });
+                  });
+                  req.on('error', reject);
+                  req.end();
+              });
+          }
+          let authorCache = null;
+          async function loadAuthors(token) {
+              if (!token) return {};
+              try {
+                  const res = await httpsRequest({
+                      hostname: 'api.hubapi.com',
+                      path: '/cms/v3/blogs/authors?limit=100',
+                      method: 'GET',
+                      headers: { 'Authorization': `Bearer ${token}` }
+                  });
+                  const cache = {};
+                  (res.results || []).forEach(a => {
+                      cache[a.id] = {
+                          fullName: a.fullName,
+                          avatar: a.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80'
+                      };
+                  });
+                  return cache;
+              } catch (e) {
+                  return {};
+              }
+          }
+          exports.handler = async (event) => {
+              const headers = {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                  'Content-Type': 'application/json'
+              };
+              const method = event.httpMethod || (event.requestContext && event.requestContext.http && event.requestContext.http.method);
+              if (method === 'OPTIONS') {
+                  return { statusCode: 204, headers, body: '' };
+              }
+              const query = event.queryStringParameters || {};
+              const industry = query.industry || '';
+              const limit = parseInt(query.limit, 10) || 3;
+              const after = query.after || '';
+              const token = process.env.HUBSPOT_TOKEN;
+              const blogId = process.env.HUBSPOT_BLOG_ID;
+              if (!token) {
+                  return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'HUBSPOT_TOKEN is not configured.' }) };
+              }
+              try {
+                  if (!authorCache) authorCache = await loadAuthors(token);
+                  let tagId = null;
+                  if (industry) {
+                      tagId = TAG_MAP[industry.toLowerCase()];
+                      if (!tagId) {
+                          return { statusCode: 200, headers, body: JSON.stringify({ success: true, data: { posts: [], total: 0, hasMore: false, after: '' } }) };
+                      }
+                  }
+                  let path = '/cms/v3/blogs/posts?state=PUBLISHED&sort=-publishDate&limit=100';
+                  if (blogId && blogId !== 'YOUR_BLOG_ID_HERE') {
+                      path += `&contentGroupId=${encodeURIComponent(blogId)}`;
+                  }
+                  if (tagId) {
+                      path += `&tagId__eq=${encodeURIComponent(tagId)}`;
+                  }
+                  if (after) {
+                      path += `&after=${encodeURIComponent(after)}`;
+                  }
+                  const response = await httpsRequest({
+                      hostname: 'api.hubapi.com',
+                      path,
+                      method: 'GET',
+                      headers: { 'Authorization': `Bearer ${token}` }
+                  });
+                  const results = response.results || [];
+                  const awsBlogs = results.filter(post => {
+                      const name = post.name || '';
+                      return /Blog (11|22|33|44|55|66)/.test(name) || /Continuous eTMF|Validated AI for Regulatory/.test(name);
+                  });
+                  const formatted = awsBlogs.map(post => {
+                      let postTags = [];
+                      if (post.tagIds && Array.isArray(post.tagIds)) {
+                          postTags = post.tagIds.map(id => REVERSE_TAG_MAP[id] || id.toString()).filter(Boolean);
+                      }
+                      if (postTags.length === 0 && industry) {
+                          postTags = [industry.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')];
+                      }
+                      const author = authorCache[post.blogAuthorId] || {
+                          fullName: post.authorName || 'Cloudbyz Contributor',
+                          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80'
+                      };
+                      return {
+                          id: post.id,
+                          name: post.name || post.htmlTitle || 'Untitled Post',
+                          postBody: (post.postBody || '').replace(/<[^>]*>/g, ''),
+                          featuredImage: post.featuredImage || 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=800&q=80',
+                          publishDate: (post.publishDate && post.publishDate !== '1970-01-01T00:00:00Z') ? post.publishDate : (post.created || post.createdAt),
+                          blogAuthor: author,
+                          tags: postTags,
+                          tagIds: post.tagIds || []
+                      };
+                  });
+                  const total = formatted.length;
+                  let startIndex = 0;
+                  if (after) {
+                      const parsed = parseInt(after, 10);
+                      if (!isNaN(parsed)) startIndex = parsed;
+                  }
+                  const sliced = formatted.slice(startIndex, startIndex + limit);
+                  const nextIndex = startIndex + limit;
+                  const hasMore = nextIndex < total;
+                  const nextAfter = hasMore ? nextIndex.toString() : '';
+                  return {
+                      statusCode: 200,
+                      headers,
+                      body: JSON.stringify({
+                          success: true,
+                          data: { posts: sliced, total, hasMore, after: nextAfter }
+                      })
+                  };
+              } catch (e) {
+                  return {
+                      statusCode: 500,
+                      headers,
+                      body: JSON.stringify({ success: false, error: e.message })
+                  };
+              }
+          };
+
+  HttpApiGateway:
+    Type: 'AWS::ApiGatewayV2::Api'
+    Properties:
+      Name: 'cloudbyz-blog-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+
+  ApiIntegration:
+    Type: 'AWS::ApiGatewayV2::Integration'
+    Properties:
+      ApiId: !Ref HttpApiGateway
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BlogLambdaFunction.Arn}/invocations'
+      PayloadFormatVersion: '2.0'
+
+  ApiRoute:
+    Type: 'AWS::ApiGatewayV2::Route'
+    Properties:
+      ApiId: !Ref HttpApiGateway
+      RouteKey: 'GET /api/blogs'
+      Target: !Sub 'integrations/${ApiIntegration}'
+
+  ApiRouteOptions:
+    Type: 'AWS::ApiGatewayV2::Route'
+    Properties:
+      ApiId: !Ref HttpApiGateway
+      RouteKey: 'OPTIONS /api/blogs'
+      Target: !Sub 'integrations/${ApiIntegration}'
+
+  ApiStage:
+    Type: 'AWS::ApiGatewayV2::Stage'
+    Properties:
+      ApiId: !Ref HttpApiGateway
+      StageName: '$default'
+      AutoDeploy: true
+
+  LambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref BlogLambdaFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApiGateway}/*/*'
+
+Outputs:
+  ApiUrl:
+    Description: 'AWS Lambda Blog API Endpoint URL'
+    Value: !Sub 'https://${HttpApiGateway}.execute-api.${AWS::Region}.amazonaws.com/api/blogs'

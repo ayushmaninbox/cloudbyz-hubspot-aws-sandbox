@@ -42,10 +42,12 @@ Confirms the pure SSR model. The server resolves all content and transfers the c
 
 ```
 blogs-fix/
-├── .env                          # HubSpot Integration Credentials
+├── .env                          # HubSpot Integration & AWS_API_URL settings
 ├── .gitignore                    # Prevents credentials from tracking to git
 ├── README.md                     # Documentation (this file)
+├── start.sh                      # Automated starter script for local run
 ├── index.php                     # Root landing page (Sandbox Navigation)
+├── aws-sandbox-template.yml      # AWS CloudFormation Stack Template
 ├── assets/                       # Screenshots for documentation
 │   ├── hubspot_admin_dashboard.png
 │   ├── hubspot_all_resources.png
@@ -60,10 +62,10 @@ blogs-fix/
 │   ├── index.php                 # Server-Side Rendered PHP (fetches from port 3000)
 │   ├── style.css                 # Custom CSS stylesheet copy
 │   └── hubspot.js                # API server on port 3000 (Filters out AWS blogs)
-└── aws/                          # AWS Simulation (AJAX Client-Side Portal)
-    ├── index.php                 # Client-Side AJAX Fetch (fetches from port 3001)
+└── aws/                          # AWS Portal (AJAX Client-Side Portal)
+    ├── index.php                 # Client-Side AJAX Fetch
     ├── style.css                 # Custom CSS stylesheet copy
-    └── aws.js                    # AWS Lambda simulation API on port 3001
+    └── lambda.js                 # Production-ready AWS Lambda handler code
 ```
 
 ---
@@ -120,23 +122,46 @@ If you need to seed or populate your HubSpot sandbox portal with all 14 blogs (B
 node scripts/publish-all-blogs.js
 ```
 
-### 2. Start Backend APIs
-Start the Node.js API servers in the background:
+### 2. Run the Sandboxes (Single Command)
+Run the automated start script:
 ```bash
-# Start HubSpot SSR simulation API (Port 3000)
-node hubspot/hubspot.js
-
-# Start AWS Lambda simulation API (Port 3001)
-node aws/aws.js
+./start.sh
 ```
+This script will start the local HubSpot Node.js SSR server on port 3000 in the background and start the local PHP server on port 8000.
 
-### 3. Start PHP Server
-Start the local PHP server in the root workspace folder:
-```bash
-php -S localhost:8000
-```
+### 3. Deploying to AWS Lambda (Isolated Sandbox & Easy Teardown)
+To run the AWS API on actual AWS Lambda + API Gateway without affecting any other AWS projects:
+
+1. **Deploy Stack**: Deploy the isolated CloudFormation stack using the pre-installed AWS CLI, passing your HubSpot credentials as parameter overrides:
+   ```bash
+   aws cloudformation deploy \
+     --template-file aws-sandbox-template.yml \
+     --stack-name cloudbyz-blog-sandbox \
+     --capabilities CAPABILITY_IAM \
+     --parameter-overrides HubSpotToken="YOUR_HUBSPOT_TOKEN" HubSpotBlogId="YOUR_HUBSPOT_BLOG_ID"
+   ```
+
+2. **Retrieve API URL**: Once the deployment finishes, run this command to retrieve your live AWS API Gateway endpoint URL:
+   ```bash
+   aws cloudformation describe-stacks \
+     --stack-name cloudbyz-blog-sandbox \
+     --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
+     --output text
+   ```
+
+3. **Configure `.env`**: Add the returned URL to your local `.env` file to redirect the AWS AJAX Portal to call your live Lambda endpoint:
+   ```env
+   AWS_API_URL=https://your-api-id.execute-api.your-region.amazonaws.com/api/blogs
+   ```
+
+4. **Teardown / Delete Stack**: When you are finished and want to delete the sandbox from AWS completely without leaving any active resources, run:
+   ```bash
+   aws cloudformation delete-stack --stack-name cloudbyz-blog-sandbox
+   ```
+   *Note: This command will cleanly delete the Lambda function, API Gateway, IAM role, and CloudWatch log groups in one step.*
 
 ### 4. Verify in Browser
-Open **[http://localhost:8000/](http://localhost:8000/)** and test the portals. Open Chrome DevTools (`Network` tab $\rightarrow$ `Fetch/XHR`) to trace the network requests:
-- `/hubspot/` will show zero background network fetches for blogs.
-- `/aws/` will show requests logged to `http://localhost:3001/api/blogs?industry=...&limit=3` as you click tabs and hit **Load More**.
+Open **[http://localhost:8000/](http://localhost:8000/)** in your browser:
+* **HubSpot SSR Portal**: Confirms pure SSR. Zero client-side network fetches for blogs.
+* **AWS AJAX Portal**: Fetches blogs dynamically on the client-side. Since you added `AWS_API_URL` to your `.env`, it will query your live AWS Lambda API Gateway endpoint directly. Check your browser's DevTools Network tab to confirm the live URL request.
+
