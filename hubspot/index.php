@@ -1,22 +1,18 @@
 <?php
-// Determine active section and tag
-$section = isset($_GET['section']) ? $_GET['section'] : '';
-$tag = '';
+// Determine active industry
+$industry = isset($_GET['industry']) ? $_GET['industry'] : '';
 $sectionTitle = 'All Resources';
 
-if ($section === '1') {
-    $tag = 'Cosmetics';
-    $sectionTitle = 'Section 1 (Cosmetics)';
-} elseif ($section === '2') {
-    $tag = 'Biotechnology';
-    $sectionTitle = 'Section 2 (Biotechnology)';
-} elseif ($section === '3') {
-    $tag = 'Animal Health';
-    $sectionTitle = 'Section 3 (Animal Health)';
+if ($industry === 'cosmetics') {
+    $sectionTitle = 'Cosmetics';
+} elseif ($industry === 'biotechnology') {
+    $sectionTitle = 'Biotechnology';
+} elseif ($industry === 'animal-health') {
+    $sectionTitle = 'Animal Health';
 }
 
 // Fetch posts from Node.js server (running on port 3000) during page compile
-$backendUrl = 'http://localhost:3000/api/blogs?tag=' . urlencode($tag) . '&limit=100';
+$backendUrl = 'http://localhost:3000/api/blogs?industry=' . urlencode($industry) . '&limit=100';
 $posts = [];
 $error = '';
 
@@ -61,16 +57,16 @@ if ($responseJson === false) {
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ml-auto">
           <li class="nav-item">
-            <a class="nav-link tab-btn <?php echo $section === '' ? 'active' : ''; ?>" href="index.php">All</a>
+            <a class="nav-link tab-btn <?php echo $industry === '' ? 'active' : ''; ?>" href="index.php">All</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link tab-btn <?php echo $section === '1' ? 'active' : ''; ?>" href="index.php?section=1">Section 1</a>
+            <a class="nav-link tab-btn <?php echo $industry === 'cosmetics' ? 'active' : ''; ?>" href="index.php?industry=cosmetics">Cosmetics</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link tab-btn <?php echo $section === '2' ? 'active' : ''; ?>" href="index.php?section=2">Section 2</a>
+            <a class="nav-link tab-btn <?php echo $industry === 'biotechnology' ? 'active' : ''; ?>" href="index.php?industry=biotechnology">Biotechnology</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link tab-btn <?php echo $section === '3' ? 'active' : ''; ?>" href="index.php?section=3">Section 3</a>
+            <a class="nav-link tab-btn <?php echo $industry === 'animal-health' ? 'active' : ''; ?>" href="index.php?industry=animal-health">Animal Health</a>
           </li>
         </ul>
       </div>
@@ -115,9 +111,13 @@ if ($responseJson === false) {
                   <?php foreach ($post['tags'] as $t): ?>
                     <?php
                       $cls = 'tag-default';
-                      if (strtolower($t) === 'cosmetics') $cls = 'tag-cosmetics';
-                      elseif (strtolower($t) === 'biotechnology') $cls = 'tag-biotechnology';
-                      elseif (strtolower($t) === 'animal health') $cls = 'tag-animal-health';
+                      $lt = strtolower($t);
+                      if ($lt === 'cosmetics') $cls = 'tag-cosmetics';
+                      elseif ($lt === 'biotechnology') $cls = 'tag-biotechnology';
+                      elseif ($lt === 'animal health' || $lt === 'animal-health') $cls = 'tag-animal-health';
+                      elseif ($lt === 'whitepaper' || $lt === 'whitepapers') $cls = 'tag-whitepaper';
+                      elseif ($lt === 'case study' || $lt === 'case studies' || $lt === 'case-study') $cls = 'tag-case-study';
+                      elseif ($lt === 'video' || $lt === 'videos') $cls = 'tag-video';
                     ?>
                     <span class="tag-badge <?php echo $cls; ?>"><?php echo htmlspecialchars($t); ?></span>
                   <?php endforeach; ?>

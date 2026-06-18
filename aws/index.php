@@ -27,16 +27,16 @@
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ml-auto">
           <li class="nav-item">
-            <button class="nav-link tab-btn active" data-section="" data-tag="" data-title="All Resources">All</button>
+            <button class="nav-link tab-btn active" data-industry="" data-title="All Resources">All</button>
           </li>
           <li class="nav-item">
-            <button class="nav-link tab-btn" data-section="1" data-tag="Cosmetics" data-title="Section 1 (Cosmetics)">Section 1</button>
+            <button class="nav-link tab-btn" data-industry="cosmetics" data-title="Cosmetics">Cosmetics</button>
           </li>
           <li class="nav-item">
-            <button class="nav-link tab-btn" data-section="2" data-tag="Biotechnology" data-title="Section 2 (Biotechnology)">Section 2</button>
+            <button class="nav-link tab-btn" data-industry="biotechnology" data-title="Biotechnology">Biotechnology</button>
           </li>
           <li class="nav-item">
-            <button class="nav-link tab-btn" data-section="3" data-tag="Animal Health" data-title="Section 3 (Animal Health)">Section 3</button>
+            <button class="nav-link tab-btn" data-industry="animal-health" data-title="Animal Health">Animal Health</button>
           </li>
         </ul>
       </div>
@@ -70,6 +70,14 @@
 
     <!-- Blog Grid -->
     <main class="blog-grid" id="blog-grid"></main>
+
+    <!-- Load More Button -->
+    <div id="load-more-container" class="action-container d-none">
+      <button id="btn-load-more" class="btn-view-more">
+        <span>Load More</span>
+        <i class="fas fa-chevron-down ml-2"></i>
+      </button>
+    </div>
   </div>
 
   <!-- Scripts -->
@@ -81,9 +89,12 @@
   <script>
     $(document).ready(function() {
       const apiBaseUrl = 'http://localhost:3001/api/blogs';
+      let currentIndustry = '';
+      let nextAfterCursor = '';
+      let currentPageTitle = 'All Resources';
       
       // Load blogs on start
-      loadBlogs('', 'All Resources');
+      loadBlogs('', 'All Resources', false);
 
       // Tab click events
       $('.tab-btn').click(function(e) {
@@ -94,37 +105,62 @@
         $(this).addClass('active');
 
         // Get filter settings
-        const tag = $(this).data('tag');
+        const industry = $(this).data('industry') || '';
         const title = $(this).data('title');
 
+        currentIndustry = industry;
+        currentPageTitle = title;
+        nextAfterCursor = ''; // Reset pagination on tab change
+
         // Fetch
-        loadBlogs(tag, title);
+        loadBlogs(industry, title, false);
       });
 
-      function loadBlogs(tag, title) {
+      // Load More button click event
+      $('#btn-load-more').click(function(e) {
+        e.preventDefault();
+        loadBlogs(currentIndustry, currentPageTitle, true);
+      });
+
+      function loadBlogs(industry, title, isAppend) {
         // Update page title
         $('#page-title').text(title);
 
-        // Reset display states
-        $('#blog-grid').empty().hide();
-        $('#error-alert').addClass('d-none');
-        $('#empty-state').hide();
-        $('#loading').show();
+        if (!isAppend) {
+          // Reset display states for new fetch
+          $('#blog-grid').empty().hide();
+          $('#error-alert').addClass('d-none');
+          $('#empty-state').hide();
+          $('#loading').show();
+          $('#load-more-container').addClass('d-none');
+        } else {
+          // Show small loading on button or disable it
+          $('#btn-load-more').prop('disabled', true).find('span').text('Loading...');
+        }
 
         // AJAX Request
-        const url = `${apiBaseUrl}?tag=${encodeURIComponent(tag)}&limit=100`;
+        let url = `${apiBaseUrl}?industry=${encodeURIComponent(industry)}&limit=3`;
+        if (nextAfterCursor) {
+          url += `&after=${encodeURIComponent(nextAfterCursor)}`;
+        }
         
+        // Log network call to console
+        console.log(`[AJAX Fetch] Querying: ${url}`);
+
         $.ajax({
           url: url,
           type: 'GET',
           dataType: 'json',
           success: function(response) {
             $('#loading').hide();
+            $('#btn-load-more').prop('disabled', false).find('span').text('Load More');
             
             if (response.success && response.data && response.data.posts) {
               const posts = response.data.posts;
+              const hasMore = response.data.hasMore;
+              nextAfterCursor = response.data.after || '';
               
-              if (posts.length === 0) {
+              if (posts.length === 0 && !isAppend) {
                 $('#empty-state').show();
                 return;
               }
@@ -152,7 +188,10 @@
                     const lowerTag = t.toLowerCase();
                     if (lowerTag === 'cosmetics') cls = 'tag-cosmetics';
                     else if (lowerTag === 'biotechnology') cls = 'tag-biotechnology';
-                    else if (lowerTag === 'animal health') cls = 'tag-animal-health';
+                    else if (lowerTag === 'animal health' || lowerTag === 'animal-health') cls = 'tag-animal-health';
+                    else if (lowerTag === 'whitepaper' || lowerTag === 'whitepapers') cls = 'tag-whitepaper';
+                    else if (lowerTag === 'case study' || lowerTag === 'case studies' || lowerTag === 'case-study') cls = 'tag-case-study';
+                    else if (lowerTag === 'video' || lowerTag === 'videos') cls = 'tag-video';
                     
                     tagsHtml += `<span class="tag-badge ${cls}">${t}</span>`;
                   });
@@ -160,7 +199,7 @@
 
                 // Card Template
                 const cardHtml = `
-                  <article class="blog-card">
+                  <article class="blog-card" style="display: none;">
                     <div class="blog-img-container">
                       <img src="${post.featuredImage}" class="blog-img" alt="${post.name}" />
                       <div class="blog-tags">
@@ -181,10 +220,21 @@
                   </article>
                 `;
                 
-                $('#blog-grid').append(cardHtml);
+                const $card = $(cardHtml);
+                $('#blog-grid').append($card);
+                $card.fadeIn(200);
               });
               
-              $('#blog-grid').fadeIn(200);
+              if (!isAppend) {
+                $('#blog-grid').fadeIn(200);
+              }
+
+              // Toggle load more visibility
+              if (hasMore && nextAfterCursor) {
+                $('#load-more-container').removeClass('d-none');
+              } else {
+                $('#load-more-container').addClass('d-none');
+              }
 
             } else {
               showError(response.error || 'Invalid API response format.');
@@ -192,7 +242,8 @@
           },
           error: function(xhr, status, error) {
             $('#loading').hide();
-            showError('Could not connect to JS API backend server (port 3000). Please ensure server.js is running.');
+            $('#btn-load-more').prop('disabled', false).find('span').text('Load More');
+            showError('Could not connect to JS API backend server (port 3001). Please ensure aws.js is running.');
           }
         });
       }
