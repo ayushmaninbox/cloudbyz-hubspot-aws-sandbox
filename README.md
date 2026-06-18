@@ -1,64 +1,64 @@
-# HubSpot SSR Blog Filtering Prototype
+# HubSpot vs AWS Blog Sandboxes Sandbox
 
-A premium, server-side rendered (SSR) blog filtering prototype designed to fetch, filter, and display posts from the HubSpot CMS. It replicates the native rendering model of HubSpot's CMS hosting to ensure high performance and maximum search engine indexability (SEO).
+A sandbox containing two separate blog portals designed to compare HubSpot CMS's native hosting model with GoDaddy + AWS Lambda integration layouts. Both portals have identical UI designs but use entirely separate data fetching and rendering models.
 
-## Architecture Overview
+---
 
-The application utilizes a split SSR model:
-1. **PHP Frontend (`index.php`)**: Dynamically compiles and serves the HTML view on the server. Navigating categories reloads the page with query variables (e.g., `index.php?section=3`), making the initial page load immediate and indexable by search engine crawlers with **zero AJAX/XHR fetch requests logged in DevTools**.
-2. **Node.js Backend (`server.js`)**: A zero-dependency JavaScript API service running locally (on port `3000`) that securely reads HubSpot integration credentials, queries the HubSpot CMS API, maps tag IDs to their actual names, and serves formatted JSON payloads to the frontend.
+## Directory Structure
 
 ```
-+------------------+                   +------------------+                   +--------------------+
-|   Web Browser    | --(Page Load)-->  |   PHP Frontend   | --(Internal API)-->|  Node.js API Srv  |
-| (DevTools Clean) | <-- (HTML Grid) --|   (index.php)    | <--- (JSON Data) --|    (server.js)     |
-+------------------+                   +------------------+                   +--------------------+
-                                                                                        |
-                                                                                (Secure HTTPS Req)
-                                                                                        v
-                                                                              +--------------------+
-                                                                              |   HubSpot CMS API  |
-                                                                              +--------------------+
+blogs-fix/
+├── .env                  # HubSpot credentials (loaded by both servers)
+├── .gitignore            # Ignores credentials/dependencies
+├── README.md             # Developer instructions
+├── index.php             # Root landing page (Sandbox Navigation)
+├── hubspot/              # HubSpot Simulation (SSR)
+│   ├── index.php         # Server-Side Rendered PHP (fetches from port 3000)
+│   ├── style.css         # Stylesheet copy
+│   └── hubspot.js        # HubSpot SSR API server running on port 3000
+└── aws/                  # AWS Simulation (AJAX Client-Side Fetch)
+    ├── index.php         # Client-Side AJAX Fetch (fetches from port 3001)
+    ├── style.css         # Stylesheet copy
+    └── aws.js            # AWS Lambda API server running on port 3001
 ```
 
 ---
 
-## Features
+## Sandbox Environments
 
-- **HubSpot V3 Integration**: Programmatically queries live posts and tags using HubSpot's V3 CMS endpoints.
-- **Dynamic Tag Mapping**: Automatically maps HubSpot tag IDs to their respective category labels (`Animal Health`, `Biotechnology`, `Cosmetics`) on the "All" tab.
-- **Aesthetic Cards Layout**: Grid-based responsive design styled with a clean minimal theme and modern fonts (Inter & Poppins).
-- **SEO & Performance optimized**: Zero client-side JS hydration needed to load blogs.
+### 1. HubSpot Portal (`/hubspot/`)
+- **Simulation**: Replicates the native HubSpot CMS hosting architecture.
+- **Rendering Model**: **Server-Side Rendering (SSR)**. Blog content is retrieved from the HubSpot API server (`hubspot.js` on port `3000`) and compiled into static HTML cards on the server.
+- **Data Filter**: Automatically excludes AWS-specific blogs (Blog 11-66) to only show corporate blogs (Blog 1-6).
+- **Behavior**: Clicking tabs filters content and triggers a page reload (`?section=X`). **Zero client-side Fetch/XHR calls are logged in DevTools**.
 
----
-
-## Configuration
-
-Credentials are loaded securely from a `.env` file in the root directory.
-
-Create a file named `.env` in the root folder with the following structure:
-```ini
-HUBSPOT_TOKEN=your_hubspot_access_token_here
-HUBSPOT_BLOG_ID=your_hubspot_blog_id_here
-```
+### 2. AWS Portal (`/aws/`)
+- **Simulation**: Replicates a GoDaddy-hosted landing page integrated with an AWS Lambda backend.
+- **Rendering Model**: **Client-Side Rendering (AJAX Fetch)**. The browser loads an empty layout skeleton, displays a loading spinner, fetches data asynchronously via JavaScript `fetch`/`$.ajax` from the AWS API server (`aws.js` on port `3001`), and compiles the cards directly into the DOM.
+- **Data Filter**: Filters to return ONLY AWS-specific blogs (Blog 11-66).
+- **Behavior**: Clicking tabs filters content instantly **without reloading the page**, while browser DevTools network tab logs the calls.
 
 ---
 
-## How to Run
+## Running the Sandbox
 
-### 1. Start the Node.js API Backend
-Run the background Node service:
-```bash
-node server.js
-```
-The API server will run at `http://localhost:3000`.
+### 1. Start the API Backend Servers
+Run both local backend Node servers:
+- **HubSpot SSR Server (port 3000)**:
+  ```bash
+  node hubspot/hubspot.js
+  ```
+- **AWS AJAX Server (port 3001)**:
+  ```bash
+  node aws/aws.js
+  ```
 
-### 2. Start the PHP Frontend Server
-Start a local PHP development server:
+### 2. Start the PHP Server
+Start the PHP server in the root directory:
 ```bash
 php -S localhost:8000
 ```
 
-### 3. View the Prototype
-Open your web browser and navigate to:
-**[http://localhost:8000](http://localhost:8000)**
+### 3. Open the Sandbox Hub
+Open your browser and navigate to:
+**[http://localhost:8000/](http://localhost:8000/)**

@@ -4,8 +4,8 @@ const path = require('path');
 const https = require('https');
 const url = require('url');
 
-const PORT = 3000;
-const ENV_PATH = path.join(__dirname, '.env');
+const PORT = 3001;
+const ENV_PATH = path.join(__dirname, '../.env');
 
 // Parse .env manually to load credentials
 const config = {
@@ -98,7 +98,7 @@ async function getTagIdByName(token, name) {
 }
 
 // Fetch posts directly from HubSpot
-async function fetchPosts(tag = '', limit = 3, offset = 0) {
+async function fetchAwsBlogs(tag = '', limit = 3, offset = 0) {
     if (!config.hubspot_token) {
         throw new Error("HUBSPOT_TOKEN is not configured in .env file.");
     }
@@ -132,10 +132,16 @@ async function fetchPosts(tag = '', limit = 3, offset = 0) {
     const response = await httpsRequest(options);
     const results = response.results || [];
     
+    // Filter to only include AWS blogs (Blog 11, 22, 33, 44, 55, 66)
+    const awsBlogs = results.filter(post => {
+        const name = post.name || '';
+        return /Blog (11|22|33|44|55|66)/.test(name);
+    });
+
     // Fetch tag map to resolve tagIds to actual tag names
     const tagMap = await getAllTagsMap(config.hubspot_token);
     
-    const formatted = results.map(post => {
+    const formatted = awsBlogs.map(post => {
         let postTags = [];
         if (post.tagIds && Array.isArray(post.tagIds)) {
             postTags = post.tagIds.map(id => tagMap[id]).filter(Boolean);
@@ -189,7 +195,7 @@ const server = http.createServer(async (req, res) => {
             const limit = parseInt(query.limit) || 3;
             const offset = parseInt(query.offset) || 0;
 
-            const data = await fetchPosts(tag, limit, offset);
+            const data = await fetchAwsBlogs(tag, limit, offset);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: true, data }));
             return;
@@ -205,5 +211,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`JavaScript API backend running on http://localhost:${PORT}`);
+    console.log(`AWS Lambda simulation API running on http://localhost:${PORT}`);
 });
